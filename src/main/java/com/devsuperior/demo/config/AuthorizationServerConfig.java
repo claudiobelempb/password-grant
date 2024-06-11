@@ -18,7 +18,9 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.OAuth2Token;
+import org.springframework.security.oauth2.core.oidc.OidcScopes;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationConsentService;
@@ -71,7 +73,13 @@ public class AuthorizationServerConfig {
         http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
                 .tokenEndpoint(tokenEndpoint -> tokenEndpoint
                         .accessTokenRequestConverter(new CustomPasswordAuthenticationConverter())
-                        .authenticationProvider(new CustomPasswordAuthenticationProvider(authorizationService(), tokenGenerator(), userDetailsService, passwordEncoder())));
+                        .authenticationProvider(new CustomPasswordAuthenticationProvider(
+                                authorizationService(),
+                                tokenGenerator(),
+                                userDetailsService,
+                                passwordEncoder())
+                        )
+                );
 
         http.oauth2ResourceServer(oauth2ResourceServer -> oauth2ResourceServer.jwt(Customizer.withDefaults()));
         // @formatter:on
@@ -89,23 +97,35 @@ public class AuthorizationServerConfig {
         return new InMemoryOAuth2AuthorizationConsentService();
     }
 
+    /*Revisto*/
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+
     @Bean
     public RegisteredClientRepository registeredClientRepository() {
+        String withId = UUID.randomUUID().toString();
+        String hashPassword = passwordEncoder().encode(clientSecret);
+        AuthorizationGrantType password = new AuthorizationGrantType("password");
+
         // @formatter:off
         RegisteredClient registeredClient = RegisteredClient
-                .withId(UUID.randomUUID().toString())
+                .withId(withId)
                 .clientId(clientId)
-                .clientSecret(passwordEncoder().encode(clientSecret))
-                .scope("read")
-                .scope("write")
-                .authorizationGrantType(new AuthorizationGrantType("password"))
+                .clientSecret(hashPassword)
+                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .authorizationGrantType(password)
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
+                .redirectUri("http://127.0.0.1:8080/login/oauth2/code/users-client-oidc")
+                .redirectUri("http://127.0.0.1:8080/authorized")
                 .tokenSettings(tokenSettings())
                 .clientSettings(clientSettings())
+                .scope(OidcScopes.OPENID)
+                .scope("read")
+                .scope("write")
                 .build();
         // @formatter:on
 
@@ -114,17 +134,20 @@ public class AuthorizationServerConfig {
 
     @Bean
     public TokenSettings tokenSettings() {
+
+        OAuth2TokenFormat selfContained = OAuth2TokenFormat.SELF_CONTAINED;
+        Duration durationLive = Duration.ofSeconds(jwtDurationSeconds);
         // @formatter:off
         return TokenSettings.builder()
-                .accessTokenFormat(OAuth2TokenFormat.SELF_CONTAINED)
-                .accessTokenTimeToLive(Duration.ofSeconds(jwtDurationSeconds))
+                .accessTokenFormat(selfContained)
+                .accessTokenTimeToLive(durationLive)
                 .build();
         // @formatter:on
     }
 
     @Bean
     public ClientSettings clientSettings() {
-        return ClientSettings.builder().build();
+        return ClientSettings.builder().requireAuthorizationConsent(true).build();
     }
 
     @Bean
@@ -148,6 +171,13 @@ public class AuthorizationServerConfig {
             CustomUserAuthorities user = (CustomUserAuthorities) principal.getDetails();
             List<String> authorities = user.getAuthorities().stream().map(x -> x.getAuthority()).toList();
             if (context.getTokenType().getValue().equals("access_token")) {
+                // @formatter:off
+                context.getClaims()
+                        .claim("authorities", authorities)
+                        .claim("username", user.getUsername());
+                // @formatter:on
+            }
+            if (context.getTokenType().getValue().equals("refresh_token")) {
                 // @formatter:off
                 context.getClaims()
                         .claim("authorities", authorities)

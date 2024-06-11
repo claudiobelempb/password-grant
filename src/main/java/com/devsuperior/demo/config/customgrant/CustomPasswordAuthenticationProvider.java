@@ -19,13 +19,14 @@ import org.springframework.security.oauth2.server.authorization.context.Authoriz
 import org.springframework.security.oauth2.server.authorization.token.DefaultOAuth2TokenContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
+import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
 import java.security.Principal;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Component
 public class CustomPasswordAuthenticationProvider implements AuthenticationProvider {
 
     private static final String ERROR_URI = "https://datatracker.ietf.org/doc/html/rfc6749#section-5.2";
@@ -33,14 +34,13 @@ public class CustomPasswordAuthenticationProvider implements AuthenticationProvi
     private final UserDetailsService userDetailsService;
     private final OAuth2TokenGenerator<? extends OAuth2Token> tokenGenerator;
     private final PasswordEncoder passwordEncoder;
-    private String username = "";
-    private String password = "";
-    private Set<String> authorizedScopes = new HashSet<>();
+    /*private String username = "";*/
+    /*private String password = "";*/
+    /*private Set<String> authorizedScopes = new HashSet<>();*/
 
     public CustomPasswordAuthenticationProvider(OAuth2AuthorizationService authorizationService,
                                                 OAuth2TokenGenerator<? extends OAuth2Token> tokenGenerator,
                                                 UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
-
         Assert.notNull(authorizationService, "authorizationService cannot be null");
         Assert.notNull(tokenGenerator, "TokenGenerator cannot be null");
         Assert.notNull(userDetailsService, "UserDetailsService cannot be null");
@@ -57,8 +57,8 @@ public class CustomPasswordAuthenticationProvider implements AuthenticationProvi
         CustomPasswordAuthenticationToken customPasswordAuthenticationToken = (CustomPasswordAuthenticationToken) authentication;
         OAuth2ClientAuthenticationToken clientPrincipal = getAuthenticatedClientElseThrowInvalidClient(customPasswordAuthenticationToken);
         RegisteredClient registeredClient = clientPrincipal.getRegisteredClient();
-        username = customPasswordAuthenticationToken.getUsername();
-        password = customPasswordAuthenticationToken.getPassword();
+        String username = customPasswordAuthenticationToken.getUsername();
+        String password = customPasswordAuthenticationToken.getPassword();
 
         UserDetails user = null;
         try {
@@ -71,9 +71,12 @@ public class CustomPasswordAuthenticationProvider implements AuthenticationProvi
             throw new OAuth2AuthenticationException("Invalid credentials");
         }
 
-        authorizedScopes = user.getAuthorities().stream()
+        Set<String> authorizedScopes = user.getAuthorities().stream()
                 .map(scope -> scope.getAuthority())
-                .filter(scope -> registeredClient.getScopes().contains(scope))
+                .filter(scope -> {
+                    assert registeredClient != null;
+                    return registeredClient.getScopes().contains(scope);
+                })
                 .collect(Collectors.toSet());
 
         //-----------Create a new Security Context Holder Context----------
@@ -94,6 +97,7 @@ public class CustomPasswordAuthenticationProvider implements AuthenticationProvi
                 .authorizationGrantType(new AuthorizationGrantType("password"))
                 .authorizationGrant(customPasswordAuthenticationToken);
 
+        assert registeredClient != null;
         OAuth2Authorization.Builder authorizationBuilder = OAuth2Authorization.withRegisteredClient(registeredClient)
                 .attribute(Principal.class.getName(), clientPrincipal)
                 .principalName(clientPrincipal.getName())

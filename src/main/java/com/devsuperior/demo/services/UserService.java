@@ -10,7 +10,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 public class UserService implements UserDetailsService {
@@ -20,18 +19,20 @@ public class UserService implements UserDetailsService {
         this.userRepository = userRepository;
     }
 
+    /*Revision*/
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        List<UserDetailsProjection> list = userRepository.searchUserAndRolesByEmail(username);
-        if(list.isEmpty()){
-            throw  new UsernameNotFoundException("User not found");
+
+        List<UserDetailsProjection> customer = userRepository.searchUserAndRolesByEmail(username);
+        if (customer.isEmpty()) {
+            throw new UsernameNotFoundException("User details not found for the user => " + username);
         }
 
         User user = new User();
         user.setEmail(username);
-        user.setPassword(list.get(0).getPassword());
+        user.setPassword(customer.get(0).getPassword());
 
-        for(UserDetailsProjection projection: list){
+        for (UserDetailsProjection projection : customer) {
             user.addRole(new Role(projection.getRoleId(), projection.getAuthority()));
         }
 
